@@ -1098,7 +1098,18 @@ class ChineseCalendarCard extends LitElement {
   }
 
   get _attrs() {
-    return this._entity?.attributes?.data || {};
+    const attributes = this._entity?.attributes;
+    if (!attributes || typeof attributes !== "object") {
+      return {};
+    }
+
+    // The companion integration can omit the nested `data` object when
+    // show_detail is disabled. In that case its useful fields remain at the
+    // entity's top level, so render from those attributes instead.
+    if (attributes.data && typeof attributes.data === "object") {
+      return attributes.data;
+    }
+    return attributes;
   }
 
   render() {
