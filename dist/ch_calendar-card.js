@@ -1,7 +1,7 @@
 /**
  * ch_calendar-card - 中国节假日日历卡片
  * 基于 Lit，适配 Home Assistant 2023.5+
- * 0.4.0：可手动调用 chineseholiday.get 拉取节假日；卡片内添加的公历纪念日只存在前端，不写入后端节假日。
+ * 0.4.1：手动调用 chineseholiday.get 时绑定当前卡片实体；卡片内添加的公历纪念日只存在前端。
  */
 
 const LitElement = Object.getPrototypeOf(customElements.get("ha-panel-lovelace"));
@@ -1899,7 +1899,7 @@ class ChineseCalendarCard extends LitElement {
     this._fetching = true;
     this._fetchMessage = "";
     try {
-      await this._hass.callService("chineseholiday", "get", { force: true }, {}, false, true);
+      await this._hass.callService("chineseholiday", "get", { force: true }, { entity_id: this.config?.entity || "sensor.chinese_holiday" }, false, true);
       this._fetchMessage = "已拉取";
     } catch (err) {
       console.error("chineseholiday.get failed", err);
