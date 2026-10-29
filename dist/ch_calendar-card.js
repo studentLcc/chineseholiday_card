@@ -1,7 +1,7 @@
 /**
  * ch_calendar-card - 中国节假日日历卡片
  * 基于 Lit，适配 Home Assistant 2023.5+
- * 简约现代设计，完全使用 HA CSS 变量，支持深/浅色主题
+ * 0.4.0：可手动调用 chineseholiday.get 拉取节假日；卡片内添加的公历纪念日只存在前端，不写入后端节假日。
  */
 
 const LitElement = Object.getPrototypeOf(customElements.get("ha-panel-lovelace"));
@@ -744,6 +744,156 @@ class ChineseCalendarCard extends LitElement {
         white-space: pre-wrap;
       }
 
+
+      .fetch-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 34px;
+        margin-left: auto;
+        padding: 6px 12px;
+        border: 1px solid var(--chip-border);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.16);
+        color: #fff;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .fetch-btn ha-icon {
+        --mdc-icon-size: 16px;
+        color: #fff;
+      }
+
+      .memorial-panel {
+        margin: 14px var(--spacing) 0;
+        padding: 14px;
+        border-radius: 18px;
+        border: 1px dashed color-mix(in srgb, var(--accent-color) 35%, var(--divider-color, rgba(0, 0, 0, 0.12)));
+        background: color-mix(in srgb, var(--card-background-color, #fff) 94%, var(--accent-color));
+      }
+
+      .memorial-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .memorial-head .section-title {
+        flex: 1;
+      }
+
+      .memorial-note,
+      .memorial-message {
+        margin: 8px 0 0;
+        font-size: 12px;
+        line-height: 1.55;
+        color: var(--secondary-text-color);
+      }
+
+      .memorial-message {
+        color: var(--primary-color);
+      }
+
+      .text-btn,
+      .memorial-save,
+      .memorial-delete {
+        border: 0;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--primary-color);
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .text-btn,
+      .memorial-save {
+        min-height: 32px;
+        padding: 6px 12px;
+      }
+
+      .memorial-form {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(140px, 1.2fr) auto;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .memorial-input,
+      .memorial-select {
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+        min-height: 36px;
+        padding: 6px 10px;
+        border-radius: 12px;
+        border: 1px solid color-mix(in srgb, var(--divider-color, rgba(0, 0, 0, 0.16)) 80%, transparent);
+        background: var(--card-background-color, #fff);
+        color: var(--primary-text-color);
+        font: inherit;
+        font-size: 13px;
+      }
+
+      .memorial-list {
+        display: grid;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .memorial-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 8px;
+        align-items: center;
+        padding: 10px 12px;
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--card-background-color, #fff) 88%, var(--accent-color));
+      }
+
+      .memorial-name {
+        font-size: 15px;
+        font-weight: 650;
+        color: var(--primary-text-color);
+        word-break: break-word;
+      }
+
+      .memorial-sub {
+        margin-top: 3px;
+        font-size: 12px;
+        color: var(--secondary-text-color);
+        word-break: break-word;
+      }
+
+      .memorial-days {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--accent-strong);
+        text-align: right;
+      }
+
+      .memorial-delete {
+        width: 28px;
+        height: 28px;
+        padding: 0;
+      }
+
+      .memorial-badge {
+        display: inline-flex;
+        margin-left: 6px;
+        padding: 1px 6px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--primary-color);
+        font-size: 11px;
+        font-weight: 700;
+        vertical-align: 1px;
+      }
+
       @media (max-width: 480px) {
         :host {
           --spacing: 12px;
@@ -907,6 +1057,19 @@ class ChineseCalendarCard extends LitElement {
           font-size: 13px;
         }
 
+        .fetch-btn {
+          margin-left: 0;
+        }
+
+        .memorial-form,
+        .memorial-row {
+          grid-template-columns: 1fr;
+        }
+
+        .memorial-days {
+          text-align: left;
+        }
+
       }
 
       @media (max-width: 360px) {
@@ -951,6 +1114,12 @@ class ChineseCalendarCard extends LitElement {
       _prevTime: { type: String },
       _prevNowMs: { type: Number },
       _rollPhase: { type: String },
+      _fetching: { type: Boolean },
+      _fetchMessage: { type: String },
+      _memorialOpen: { type: Boolean },
+      _userAnniversaries: { type: Array },
+      _memorialMessage: { type: String },
+      _draftMode: { type: String },
     };
   }
 
@@ -965,6 +1134,17 @@ class ChineseCalendarCard extends LitElement {
     this._prevNowMs = this._nowMs;
     this._prevTime = this._time;
     this._rollPhase = "phase-a";
+    this._fetching = false;
+    this._fetchMessage = "";
+    this._memorialOpen = false;
+    this._userAnniversaries = [];
+    this._userData = { itemsByEntity: {} };
+    this._userDataLoadedKey = "";
+    this._memorialMessage = "";
+    this._draftName = "";
+    this._draftDate = "";
+    this._draftTime = "09:00";
+    this._draftMode = "yearly_count";
   }
 
   connectedCallback() {
@@ -1086,11 +1266,21 @@ class ChineseCalendarCard extends LitElement {
     if (!config.entity) {
       throw new Error('请在卡片配置中指定 "entity" 字段');
     }
+    const previous = this.config?.entity;
     this.config = config;
+    if (previous && previous !== config.entity && this._hass) {
+      this._userDataLoadedKey = this._anniversaryStorageKey();
+      this._loadUserAnniversaries();
+    }
   }
 
   set hass(hass) {
     this._hass = hass;
+    const key = this._anniversaryStorageKey();
+    if (hass && key && this._userDataLoadedKey !== key) {
+      this._userDataLoadedKey = key;
+      this._loadUserAnniversaries();
+    }
   }
 
   get _entity() {
@@ -1126,9 +1316,13 @@ class ChineseCalendarCard extends LitElement {
     if (attrs.term) tags.push(attrs.term);
     if (attrs.festival) tags.push(attrs.festival);
     if (attrs.anniversary) tags.push(attrs.anniversary);
+    const localMemorials = this._localMemorials();
+    for (const item of localMemorials) {
+      if (item.isToday && item.label && !tags.includes(item.label)) tags.push(item.label);
+    }
 
-    // 最近倒计时
-    const latestReminder = this._getLatestReminder(attrs);
+    // 最近倒计时。卡片纪念日只参与展示，不回写后端节假日。
+    const latestReminder = this._getLatestReminder(attrs, localMemorials);
 
     // 分组事件列表
     const sections = this._buildSections(attrs);
@@ -1164,6 +1358,13 @@ class ChineseCalendarCard extends LitElement {
               ` : ""}
             </div>
 
+            ${this._showRefresh() ? html`
+              <button class="fetch-btn" type="button" @click=${this._fetchHolidays} title="调用动作 chineseholiday.get，立即重新拉取节假日">
+                <ha-icon icon="mdi:cloud-download-outline"></ha-icon>
+                <span>${this._fetching ? "拉取中" : (this._fetchMessage || "拉取节假日")}</span>
+              </button>
+            ` : ""}
+
             ${tags.length ? html`
               <div class="tags">
                 ${tags.map(t => html`<span class="tag">${t}</span>`)}
@@ -1188,6 +1389,8 @@ class ChineseCalendarCard extends LitElement {
 
         <!-- 分组事件列表 -->
         ${sections.map(section => this._renderSection(section))}
+
+        ${this._renderMemorialSection(localMemorials)}
 
         <!-- 假期安排详情 -->
         ${attrs.holiday_info_details || attrs.holiday_info_detail || attrs.holiday_info ? html`
@@ -1243,27 +1446,24 @@ class ChineseCalendarCard extends LitElement {
     `;
   }
 
-  _getLatestReminder(attrs) {
-    let reminder = null;
-
+  _getLatestReminder(attrs, localMemorials = []) {
+    const candidates = [];
+    const add = (name, date, days) => {
+      const value = Number(days);
+      if (!name || !Number.isFinite(value)) return;
+      candidates.push({ name, date, days: value });
+    };
     if (attrs.nearest_holiday) {
-      reminder = {
-        name: attrs.nearest_holiday,
-        date: attrs.nearest_holiday_date,
-        days: attrs.nearest_holiday_days,
-      };
+      add(attrs.nearest_holiday, attrs.nearest_holiday_date, attrs.nearest_holiday_days);
     }
     if (attrs.nearest_anniversary) {
-      const ann = {
-        name: attrs.nearest_anniversary,
-        date: attrs.nearest_anniversary_date,
-        days: attrs.nearest_anniversary_days,
-      };
-      if (!reminder || ann.days < reminder.days) {
-        reminder = ann;
-      }
+      add(attrs.nearest_anniversary, attrs.nearest_anniversary_date, attrs.nearest_anniversary_days);
     }
-    return reminder;
+    for (const item of localMemorials) {
+      if (item.kind === "yearly") add(item.label, item.date, item.days);
+    }
+    candidates.sort((a, b) => a.days - b.days);
+    return candidates[0] || null;
   }
 
   _buildSections(attrs) {
@@ -1679,6 +1879,323 @@ class ChineseCalendarCard extends LitElement {
     this.dispatchEvent(e);
   }
 
+
+  _showRefresh() {
+    return this.config?.show_refresh !== false;
+  }
+
+  _showMemorials() {
+    return this.config?.show_memorials !== false;
+  }
+
+  _anniversaryStorageKey() {
+    return `chineseholiday_card:${this.config?.entity || "default"}`;
+  }
+
+  async _fetchHolidays(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!this._hass || this._fetching) return;
+    this._fetching = true;
+    this._fetchMessage = "";
+    try {
+      await this._hass.callService("chineseholiday", "get", { force: true }, {}, false, true);
+      this._fetchMessage = "已拉取";
+    } catch (err) {
+      console.error("chineseholiday.get failed", err);
+      this._fetchMessage = "拉取失败";
+    } finally {
+      this._fetching = false;
+    }
+  }
+
+  async _loadUserAnniversaries() {
+    if (!this._hass) return;
+    const storageKey = "chineseholiday_card_anniversaries";
+    try {
+      const res = await this._hass.callWS({
+        type: "frontend/get_user_data",
+        key: storageKey,
+      });
+      const value = res?.value && typeof res.value === "object" ? res.value : { itemsByEntity: {} };
+      this._userData = value.itemsByEntity ? value : { itemsByEntity: {} };
+    } catch (err) {
+      let fallback = { itemsByEntity: {} };
+      try {
+        const parsed = JSON.parse(localStorage.getItem(storageKey) || "");
+        if (parsed && typeof parsed === "object") fallback = parsed.itemsByEntity ? parsed : { itemsByEntity: {} };
+      } catch (parseErr) {
+        fallback = { itemsByEntity: {} };
+      }
+      this._userData = fallback;
+    }
+    const items = this._userData.itemsByEntity?.[this.config?.entity];
+    this._userAnniversaries = Array.isArray(items) ? items : [];
+    this.requestUpdate();
+  }
+
+  async _saveUserAnniversaries(items) {
+    const entity = this.config?.entity;
+    if (!entity || !this._hass) return;
+    this._userAnniversaries = items;
+    this._userData = this._userData && typeof this._userData === "object" ? this._userData : { itemsByEntity: {} };
+    this._userData.itemsByEntity = this._userData.itemsByEntity || {};
+    this._userData.itemsByEntity[entity] = items;
+    const storageKey = "chineseholiday_card_anniversaries";
+    try {
+      await this._hass.callWS({
+        type: "frontend/set_user_data",
+        key: storageKey,
+        value: this._userData,
+      });
+      this._memorialMessage = "已保存在当前用户的前端数据中，没有写入后端节假日。";
+    } catch (err) {
+      localStorage.setItem(storageKey, JSON.stringify(this._userData));
+      this._memorialMessage = "当前无法写入 HA 用户数据，已暂存在本浏览器。没有写入后端节假日。";
+    }
+    this.requestUpdate();
+  }
+
+  _addMemorial() {
+    const name = String(this._draftName || "").trim();
+    const date = String(this._draftDate || "").trim();
+    const mode = this._draftMode || "yearly_count";
+    if (!name || !date) {
+      this._memorialMessage = "请填写名称和日期。";
+      this.requestUpdate();
+      return;
+    }
+    const time = this._draftTime || "09:00";
+    const storedDate = mode === "timer"
+      ? `${date} ${time.length === 5 ? `${time}:00` : time}`
+      : date;
+    if (!this._parseMemorialInput(storedDate)) {
+      this._memorialMessage = "日期格式无效。";
+      this.requestUpdate();
+      return;
+    }
+    const items = Array.isArray(this._userAnniversaries) ? [...this._userAnniversaries] : [];
+    items.push({ id: `${Date.now()}`, name, date: storedDate, mode });
+    this._draftName = "";
+    this._draftDate = "";
+    this._saveUserAnniversaries(items);
+  }
+
+  _deleteMemorial(item) {
+    const items = (this._userAnniversaries || []).filter(row => {
+      if (item.id && row.id) return row.id !== item.id;
+      return !(row.name === item.name && row.date === item.date && (row.mode || "yearly_count") === item.mode);
+    });
+    this._saveUserAnniversaries(items);
+  }
+
+  _normalizeMemorials(list, source) {
+    if (!Array.isArray(list)) return [];
+    return list.map((item, index) => {
+      if (!item || typeof item !== "object") return null;
+      const name = String(item.name || "").trim();
+      const date = String(item.date || "").trim();
+      if (!name || !date) return null;
+      const mode = ["yearly", "yearly_count", "timer"].includes(item.mode)
+        ? item.mode
+        : (item.timer ? "timer" : "yearly_count");
+      return {
+        id: item.id || `${source}-${index}-${name}-${date}`,
+        name,
+        date,
+        mode,
+        source,
+      };
+    }).filter(Boolean);
+  }
+
+  _localMemorials() {
+    const seen = new Set();
+    const merged = [];
+    for (const item of [
+      ...this._normalizeMemorials(this.config?.anniversaries, "config"),
+      ...this._normalizeMemorials(this._userAnniversaries, "card"),
+    ]) {
+      const key = `${item.mode}|${item.name}|${item.date}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const decorated = this._decorateMemorial(item);
+      if (decorated) merged.push(decorated);
+    }
+    merged.sort((a, b) => {
+      const aPast = a.sortDays < 0;
+      const bPast = b.sortDays < 0;
+      if (aPast !== bPast) return aPast ? 1 : -1;
+      return aPast ? b.sortDays - a.sortDays : a.sortDays - b.sortDays;
+    });
+    return merged;
+  }
+
+  _parseMemorialInput(value) {
+    const text = String(value || "").trim();
+    const full = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/);
+    if (full) return this._memorialParts(full[1], full[2], full[3], full[4], full[5], full[6]);
+    const compact = text.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (compact) return this._memorialParts(compact[1], compact[2], compact[3]);
+    const monthDay = text.match(/^(\d{1,2})-(\d{1,2})$/) || text.match(/^(\d{2})(\d{2})$/);
+    if (monthDay) return this._memorialParts(null, monthDay[1], monthDay[2]);
+    return null;
+  }
+
+  _memorialParts(year, month, day, hour, minute, second) {
+    const parts = {
+      year: year === null || year === undefined || year === "" ? null : Number(year),
+      month: Number(month),
+      day: Number(day),
+      hour: hour === undefined || hour === null || hour === "" ? null : Number(hour),
+      minute: minute === undefined || minute === null || minute === "" ? null : Number(minute),
+      second: second === undefined || second === null || second === "" ? 0 : Number(second),
+    };
+    if (!Number.isInteger(parts.month) || parts.month < 1 || parts.month > 12) return null;
+    if (!Number.isInteger(parts.day) || parts.day < 1 || parts.day > 31) return null;
+    if (parts.year !== null && (!Number.isInteger(parts.year) || parts.year < 1900 || parts.year > 2100)) return null;
+    if (parts.hour !== null && (parts.hour < 0 || parts.hour > 23 || parts.minute < 0 || parts.minute > 59 || parts.second < 0 || parts.second > 59)) return null;
+    parts.hasTime = parts.hour !== null;
+    return parts;
+  }
+
+  _safeDate(year, month, day, hour = 0, minute = 0, second = 0) {
+    const date = new Date(year, month - 1, day, hour, minute, second, 0);
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+      return new Date(year, month, 0, hour, minute, second, 0);
+    }
+    return date;
+  }
+
+  _dateOnly(date) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+
+  _isoDate(date) {
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${date.getFullYear()}-${month}-${day}`;
+  }
+
+  _isoDateTime(date) {
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    const seconds = String(date.getSeconds()).padStart(2, "0");
+    return `${this._isoDate(date)} ${hours}:${minutes}:${seconds}`;
+  }
+
+  _nextAnnualDate(month, day, now) {
+    const today = this._dateOnly(now);
+    let candidate = this._safeDate(today.getFullYear(), month, day);
+    if (candidate < today) candidate = this._safeDate(today.getFullYear() + 1, month, day);
+    return candidate;
+  }
+
+  _dayDistance(target, now) {
+    return Math.round((this._dateOnly(target).getTime() - this._dateOnly(now).getTime()) / 86400000);
+  }
+
+  _decorateMemorial(item) {
+    const parts = this._parseMemorialInput(item.date);
+    if (!parts) return null;
+    const now = new Date(this._nowMs || Date.now());
+    if (item.mode === "timer") {
+      const target = this._safeDate(
+        parts.year || now.getFullYear(),
+        parts.month,
+        parts.day,
+        parts.hour || 0,
+        parts.minute || 0,
+        parts.second || 0,
+      );
+      const future = target.getTime() >= now.getTime();
+      const stamp = this._isoDateTime(target);
+      return {
+        ...item,
+        kind: "timer",
+        label: item.name,
+        sub: `${this._fmtDate(stamp)} · ${item.source === "config" ? "卡片配置" : "仅前端"}`,
+        date: stamp,
+        daysText: this._describeRelativeTime(stamp, future ? "future" : "past"),
+        timerType: future ? "future" : "past",
+        isToday: this._dateOnly(target).getTime() === this._dateOnly(now).getTime(),
+        sortDays: this._dayDistance(target, now),
+      };
+    }
+
+    const next = this._nextAnnualDate(parts.month, parts.day, now);
+    const days = this._dayDistance(next, now);
+    let label = item.name;
+    if (parts.year !== null && item.mode === "yearly_count") {
+      let age = next.getFullYear() - parts.year;
+      const anniversaryThisYear = this._safeDate(next.getFullYear(), parts.month, parts.day);
+      if (next < anniversaryThisYear) age -= 1;
+      if (age >= 0) label = item.name.includes("生日") ? `${item.name}(${age}岁)` : `${item.name}(${age}周年)`;
+    }
+    return {
+      ...item,
+      kind: "yearly",
+      label,
+      sub: `${this._isoDate(next)} · ${item.source === "config" ? "卡片配置" : "仅前端"}`,
+      date: this._isoDate(next),
+      days,
+      daysText: days === 0 ? "今天" : `${days} 天`,
+      isToday: days === 0,
+      sortDays: days,
+    };
+  }
+
+  _renderMemorialSection(items) {
+    if (!this._showMemorials()) return "";
+    return html`
+      <div class="memorial-panel">
+        <div class="memorial-head">
+          <span class="section-dot"></span>
+          <div class="section-title">我的纪念日</div>
+          <button class="text-btn" type="button" @click=${() => { this._memorialOpen = !this._memorialOpen; }}>
+            ${this._memorialOpen ? "收起" : "添加"}
+          </button>
+        </div>
+        <div class="memorial-note">只保存在这张卡片的前端，不会写入后端节假日，也不会触发集成里的通知规则。农历纪念日仍在集成配置中维护。</div>
+        ${this._memorialMessage ? html`<div class="memorial-message">${this._memorialMessage}</div>` : ""}
+        ${this._memorialOpen ? html`
+          <div class="memorial-form">
+            <input class="memorial-input" placeholder="名称，例如妈妈生日" .value=${this._draftName || ""} @input=${(e) => { this._draftName = e.target.value; }} />
+            <input class="memorial-input" type="date" .value=${this._draftDate || ""} @input=${(e) => { this._draftDate = e.target.value; }} />
+            <select class="memorial-select" .value=${this._draftMode || "yearly_count"} @change=${(e) => { this._draftMode = e.target.value; }}>
+              <option value="yearly_count">每年，计算周岁/周年</option>
+              <option value="yearly">每年重复，不计算周年</option>
+              <option value="timer">精确计时</option>
+            </select>
+            ${this._draftMode === "timer" ? html`
+              <input class="memorial-input" type="time" .value=${this._draftTime || "09:00"} @input=${(e) => { this._draftTime = e.target.value; }} />
+            ` : ""}
+            <button class="memorial-save" type="button" @click=${this._addMemorial}>保存</button>
+          </div>
+        ` : ""}
+        ${items.length ? html`
+          <div class="memorial-list">
+            ${items.map(item => html`
+              <div class="memorial-row">
+                <div>
+                  <div class="memorial-name">
+                    ${this._renderDecoratedName(item.label)}
+                    <span class="memorial-badge">${item.source === "config" ? "配置" : "前端"}</span>
+                  </div>
+                  <div class="memorial-sub">${item.sub}</div>
+                </div>
+                <div class="memorial-days">${item.kind === "timer" ? this._renderItemDays({ days: item.daysText, date: item.date, timerType: item.timerType }) : item.daysText}</div>
+                ${item.source === "card" ? html`
+                  <button class="memorial-delete" type="button" title="删除这个前端纪念日" @click=${() => this._deleteMemorial(item)}>×</button>
+                ` : html`<span></span>`}
+              </div>
+            `)}
+          </div>
+        ` : html`<div class="memorial-note">还没有卡片纪念日。公历日期可以在这里添加，不需要改后端节假日。</div>`}
+      </div>
+    `;
+  }
+
   getCardSize() {
     return 4;
   }
@@ -1691,15 +2208,166 @@ class ChineseCalendarCard extends LitElement {
       min_rows: 3,
     };
   }
+
+  static getConfigElement() {
+    return document.createElement("ch-calendar-card-editor");
+  }
+
+  static getStubConfig() {
+    return {
+      entity: "sensor.chinese_holiday",
+      show_refresh: true,
+      show_memorials: true,
+      anniversaries: [],
+    };
+  }
 }
 
 customElements.define("ch_calendar-card", ChineseCalendarCard);
+
+class ChineseCalendarCardEditor extends LitElement {
+  static get properties() {
+    return {
+      hass: {},
+      _config: { type: Object },
+    };
+  }
+
+  setConfig(config) {
+    this._config = {
+      show_refresh: config.show_refresh !== false,
+      show_memorials: config.show_memorials !== false,
+      anniversaries: [],
+      ...config,
+    };
+  }
+
+  _commit(config) {
+    this._config = config;
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      detail: { config },
+      bubbles: true,
+      composed: true,
+    }));
+  }
+
+  _updateAnniversary(index, patch) {
+    const anniversaries = [...(this._config.anniversaries || [])];
+    anniversaries[index] = { ...anniversaries[index], ...patch };
+    this._commit({ ...this._config, anniversaries });
+  }
+
+  render() {
+    const config = this._config || {};
+    const anniversaries = Array.isArray(config.anniversaries) ? config.anniversaries : [];
+    const entities = Object.keys(this.hass?.states || {}).filter(id => id.startsWith("sensor."));
+    return html`
+      <div class="editor">
+        <label>
+          <span>实体</span>
+          <input list="ch-calendar-entities" .value=${config.entity || ""} @change=${(e) => this._commit({ ...config, entity: e.target.value.trim() })} />
+          <datalist id="ch-calendar-entities">
+            ${entities.map(id => html`<option value=${id}></option>`)}
+          </datalist>
+        </label>
+        <label class="check">
+          <input type="checkbox" .checked=${config.show_refresh !== false} @change=${(e) => this._commit({ ...config, show_refresh: e.target.checked })} />
+          <span>显示“拉取节假日”按钮</span>
+        </label>
+        <label class="check">
+          <input type="checkbox" .checked=${config.show_memorials !== false} @change=${(e) => this._commit({ ...config, show_memorials: e.target.checked })} />
+          <span>显示纪念日添加区</span>
+        </label>
+        <p>下面这些纪念日保存在卡片配置里，只给这张卡片展示。它们不会写入后端节假日，也不会出现在集成的节假日缓存中。卡片上临时添加的纪念日另外保存在前端用户数据里。</p>
+        ${anniversaries.map((item, index) => html`
+          <div class="row">
+            <input placeholder="名称" .value=${item.name || ""} @change=${(e) => this._updateAnniversary(index, { name: e.target.value.trim() })} />
+            <input placeholder="03-21、2020-02-20 或 2024-05-01 09:30:00" .value=${item.date || ""} @change=${(e) => this._updateAnniversary(index, { date: e.target.value.trim() })} />
+            <select .value=${item.mode || "yearly_count"} @change=${(e) => this._updateAnniversary(index, { mode: e.target.value })}>
+              <option value="yearly_count">每年并计算周年</option>
+              <option value="yearly">每年重复</option>
+              <option value="timer">精确计时</option>
+            </select>
+            <button type="button" @click=${() => this._commit({ ...config, anniversaries: anniversaries.filter((_, i) => i !== index) })}>删除</button>
+          </div>
+        `)}
+        <button type="button" @click=${() => this._commit({ ...config, anniversaries: [...anniversaries, { name: "", date: "", mode: "yearly_count" }] })}>添加一条卡片纪念日</button>
+      </div>
+    `;
+  }
+
+  static get styles() {
+    return css`
+      .editor {
+        display: grid;
+        gap: 12px;
+        padding: 8px 0 16px;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--primary-text-color);
+      }
+
+      .check {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      input, select, button {
+        min-height: 36px;
+        box-sizing: border-box;
+        border-radius: 10px;
+        border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.16));
+        background: var(--card-background-color, #fff);
+        color: var(--primary-text-color);
+        font: inherit;
+        font-size: 13px;
+      }
+
+      input, select {
+        width: 100%;
+        padding: 6px 10px;
+      }
+
+      button {
+        padding: 6px 12px;
+        cursor: pointer;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(120px, 0.8fr) auto;
+        gap: 8px;
+      }
+
+      p {
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.55;
+        color: var(--secondary-text-color);
+      }
+
+      @media (max-width: 700px) {
+        .row {
+          grid-template-columns: 1fr;
+        }
+      }
+    `;
+  }
+}
+
+customElements.define("ch-calendar-card-editor", ChineseCalendarCardEditor);
+
 
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "ch_calendar-card",
   name: "中国节假日日历",
-  description: "显示中国法定节假日、农历、节气、纪念日倒计时等信息",
+  description: "显示中国法定节假日、农历、节气、纪念日倒计时，并可在卡片中添加前端纪念日",
   documentationURL: "https://github.com/studentLcc/chineseholiday_card",
   preview: true,
 });
