@@ -44,4 +44,6 @@ entity: sensor.chinese_holiday
 
 ## 版本
 
-当前版本：`0.3.4`
+当前版本：`0.3.5`
+
+卡片实现了 Home Assistant 分区视图使用的 `getGridOptions()`，默认占用 12 列、4 行。

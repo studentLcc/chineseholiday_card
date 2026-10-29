@@ -1682,6 +1682,15 @@ class ChineseCalendarCard extends LitElement {
   getCardSize() {
     return 4;
   }
+
+  getGridOptions() {
+    return {
+      columns: 12,
+      rows: 4,
+      min_columns: 6,
+      min_rows: 3,
+    };
+  }
 }
 
 customElements.define("ch_calendar-card", ChineseCalendarCard);
@@ -1691,5 +1700,6 @@ window.customCards.push({
   type: "ch_calendar-card",
   name: "中国节假日日历",
   description: "显示中国法定节假日、农历、节气、纪念日倒计时等信息",
+  documentationURL: "https://github.com/studentLcc/chineseholiday_card",
   preview: true,
 });
