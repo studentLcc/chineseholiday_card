@@ -66,33 +66,38 @@ test('card converts solar, lunar, and leap-month anniversaries', () => {
   assert.equal(leap.sub.startsWith('农历闰五月十五'), true);
 });
 
-test('card form stores solar, lunar, and leap-month anniversaries distinctly', () => {
+test('card form stores solar, lunar, and leap-month anniversaries distinctly', async () => {
   const { Card } = loadCard();
   const card = new Card();
-  card._userAnniversaries = [];
-  let saved;
-  card._saveUserAnniversaries = items => { saved = items; card._userAnniversaries = items; };
+  const calls = [];
+  card.config = { entity: 'sensor.chinese_holiday' };
+  card._hass = {
+    services: { chineseholiday: { set_memorial: {} } },
+    callService: async (...args) => { calls.push(args); },
+  };
 
   card._draftName = '中秋';
   card._draftCalendar = 'lunar';
   card._draftLunarMonth = '8';
   card._draftLunarDay = '15';
-  card._addMemorial();
-  assert.equal(saved[0].date, 'L8-15');
+  await card._addMemorial();
+  assert.equal(calls[0][2].date, 'L8-15');
+  assert.equal(calls[0][2].calendar, 'lunar');
 
   card._draftName = '闰五月纪念';
   card._draftCalendar = 'lunar';
   card._draftLunarMonth = '5';
   card._draftLunarDay = '15';
   card._draftLunarLeap = true;
-  card._addMemorial();
-  assert.equal(saved[1].date, 'LL5-15');
+  await card._addMemorial();
+  assert.equal(calls[1][2].date, 'LL5-15');
 
   card._draftName = '妈妈生日';
   card._draftCalendar = 'solar';
   card._draftDate = '1970-03-21';
-  card._addMemorial();
-  assert.equal(saved[2].date, '1970-03-21');
+  await card._addMemorial();
+  assert.equal(calls[2][2].date, '1970-03-21');
+  assert.equal(calls[2][2].calendar, 'solar');
 });
 
 test('visual editor renders controls for both calendars and leap months', () => {

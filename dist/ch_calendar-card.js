@@ -1,7 +1,7 @@
 /**
  * ch_calendar-card - 中国节假日日历卡片
  * 基于 Lit，适配 Home Assistant 2023.5+
- * 0.5.1：支持前端公历/农历纪念日，并修正 HACS 加载文件名。
+ * 0.5.2：纪念日写入集成配置，并加宽农历日期选择。
  */
 
 function initializeChineseHolidayCard(attempt = 0) {
@@ -998,10 +998,16 @@ class ChineseCalendarCard extends LitElement {
       }
 
       .memorial-form {
-        display: grid;
-        grid-template-columns: minmax(0, 1.2fr) minmax(100px, 0.8fr) minmax(0, 1fr) minmax(140px, 1.1fr) auto;
+        display: flex;
+        flex-direction: column;
         gap: 8px;
         margin-top: 12px;
+      }
+
+      .memorial-pair {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 8px;
       }
 
       .memorial-input,
@@ -1022,7 +1028,7 @@ class ChineseCalendarCard extends LitElement {
 
       .lunar-date-inputs {
         display: grid;
-        grid-template-columns: 1fr 1fr auto;
+        grid-template-columns: minmax(104px, 1fr) minmax(104px, 1fr) auto;
         gap: 8px;
       }
 
@@ -1257,12 +1263,10 @@ class ChineseCalendarCard extends LitElement {
           margin-left: 0;
         }
 
-        .memorial-form,
-        .memorial-row {
-          grid-template-columns: 1fr;
-        }
+        .memorial-pair,
+        .memorial-row,
         .lunar-date-inputs {
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: 1fr;
         }
 
         .memorial-days {
@@ -2166,6 +2170,7 @@ class ChineseCalendarCard extends LitElement {
     const items = this._userData.itemsByEntity?.[this.config?.entity];
     this._userAnniversaries = Array.isArray(items) ? items : [];
     this.requestUpdate();
+    await this._migrateFrontendMemorials();
   }
 
   async _saveUserAnniversaries(items) {
@@ -2182,15 +2187,49 @@ class ChineseCalendarCard extends LitElement {
         key: storageKey,
         value: this._userData,
       });
-      this._memorialMessage = "已保存在当前用户的前端数据中，没有写入后端节假日。";
+      this._memorialMessage = "已更新卡片里的旧纪念日。";
     } catch (err) {
       localStorage.setItem(storageKey, JSON.stringify(this._userData));
-      this._memorialMessage = "当前无法写入 HA 用户数据，已暂存在本浏览器。没有写入后端节假日。";
+      this._memorialMessage = "当前无法更新浏览器中的旧纪念日。";
     }
     this.requestUpdate();
   }
 
-  _addMemorial() {
+  async _migrateFrontendMemorials() {
+    if (this._migrated || !this._userAnniversaries?.length) return;
+    if (!this._hass?.services?.chineseholiday?.set_memorial) return;
+    this._migrated = true;
+    for (const item of [...this._userAnniversaries]) {
+      try {
+        await this._submitMemorial(item.name, this._calendarOf(item.date), item.date, item.mode || "yearly_count", "add");
+      } catch (err) {
+        console.error("migrate memorial failed", err);
+        this._migrated = false;
+        return;
+      }
+    }
+    await this._saveUserAnniversaries([]);
+    this._memorialMessage = "已把原来保存在卡片里的纪念日写入集成。";
+  }
+
+  _sourceLabel(source) {
+    if (source === "integration") return "集成";
+    if (source === "config") return "卡片配置";
+    return "待同步";
+  }
+
+  _calendarOf(date) {
+    return /^(\d{4}-)?LL?/i.test(String(date || "")) ? "lunar" : "solar";
+  }
+
+  async _submitMemorial(name, calendar, date, mode, operation) {
+    const entity = this.config?.entity || "sensor.chinese_holiday";
+    await this._hass.callService("chineseholiday", "set_memorial", {
+      name, calendar, date, mode, operation,
+    }, { entity_id: entity }, false, true);
+  }
+
+  async _addMemorial() {
     const name = String(this._draftName || "").trim();
     const calendar = this._draftCalendar || "solar";
     const date = calendar === "lunar"
@@ -2208,27 +2247,50 @@ class ChineseCalendarCard extends LitElement {
       return;
     }
     const time = this._draftTime || "09:00";
-    const storedDate = mode === "timer"
+    let storedDate = mode === "timer"
       ? `${date} ${time.length === 5 ? `${time}:00` : time}`
       : date;
+    const year = String(this._draftYear || "").trim();
+    if (calendar === "lunar" && year) storedDate = `${year}-${storedDate}`;
     if (!this._parseMemorialInput(storedDate)) {
       this._memorialMessage = "日期格式无效。";
       this.requestUpdate();
       return;
     }
-    const items = Array.isArray(this._userAnniversaries) ? [...this._userAnniversaries] : [];
-    items.push({ id: `${Date.now()}`, name, date: storedDate, mode });
-    this._draftName = "";
-    this._draftDate = "";
-    this._draftCalendar = "solar";
-    this._draftLunarMonth = "1";
-    this._draftLunarDay = "1";
-    this._draftLunarLeap = false;
+    if (!this._hass?.services?.chineseholiday?.set_memorial) {
+      this._memorialMessage = "请先把中国节假日集成更新到 0.6.8，再添加纪念日。";
+      this.requestUpdate();
+      return;
+    }
+    try {
+      await this._submitMemorial(name, calendar, storedDate, mode, "add");
+      this._draftName = "";
+      this._draftDate = "";
+      this._draftYear = "";
+      this._draftCalendar = "solar";
+      this._draftLunarMonth = "1";
+      this._draftLunarDay = "1";
+      this._draftLunarLeap = false;
+      this._memorialMessage = "已写入集成配置。";
+    } catch (err) {
+      console.error("set_memorial failed", err);
+      this._memorialMessage = "写入集成失败，请确认集成已更新到 0.6.8。";
+    }
     this.requestUpdate();
-    this._saveUserAnniversaries(items);
   }
 
-  _deleteMemorial(item) {
+  async _deleteMemorial(item) {
+    if (item.source === "integration") {
+      try {
+        await this._submitMemorial(item.name, item.calendar || this._calendarOf(item.storedDate || item.date), item.storedDate || item.date, item.mode || "yearly", "delete");
+        this._memorialMessage = "已从集成配置删除。";
+      } catch (err) {
+        console.error("delete memorial failed", err);
+        this._memorialMessage = "删除失败。";
+      }
+      this.requestUpdate();
+      return;
+    }
     const items = (this._userAnniversaries || []).filter(row => {
       if (item.id && row.id) return row.id !== item.id;
       return !(row.name === item.name && row.date === item.date && (row.mode || "yearly_count") === item.mode);
@@ -2251,6 +2313,8 @@ class ChineseCalendarCard extends LitElement {
         name,
         date,
         mode,
+        calendar: item.calendar || this._calendarOf(date),
+        storedDate: date,
         source,
       };
     }).filter(Boolean);
@@ -2260,6 +2324,7 @@ class ChineseCalendarCard extends LitElement {
     const seen = new Set();
     const merged = [];
     for (const item of [
+      ...this._normalizeMemorials(this._attrs?.configured_memorials, "integration"),
       ...this._normalizeMemorials(this.config?.anniversaries, "config"),
       ...this._normalizeMemorials(this._userAnniversaries, "card"),
     ]) {
@@ -2308,7 +2373,7 @@ class ChineseCalendarCard extends LitElement {
     if (!Number.isInteger(parts.day) || parts.day < 1 || parts.day > 31) return null;
     if (parts.year !== null && (!Number.isInteger(parts.year) || parts.year < 1900 || parts.year > 2100)) return null;
     if (parts.hour !== null && (parts.hour < 0 || parts.hour > 23 || parts.minute < 0 || parts.minute > 59 || parts.second < 0 || parts.second > 59)) return null;
-    if (isLunar && (parts.year !== null || parts.hour !== null)) return null;
+    if (isLunar && parts.hour !== null) return null;
     parts.hasTime = parts.hour !== null;
     return parts;
   }
@@ -2401,7 +2466,7 @@ class ChineseCalendarCard extends LitElement {
       ...item,
       kind: "yearly",
       label,
-      sub: `${lunarText ? `${lunarText} · ` : ""}${this._isoDate(next)} · ${item.source === "config" ? "卡片配置" : "仅前端"}`,
+        sub: `${lunarText ? `${lunarText} · ` : ""}${this._isoDate(next)} · ${this._sourceLabel(item.source)}`,
       date: this._isoDate(next),
       days,
       daysText: days === 0 ? "今天" : `${days} 天`,
@@ -2421,33 +2486,36 @@ class ChineseCalendarCard extends LitElement {
             ${this._memorialOpen ? "收起" : "添加"}
           </button>
         </div>
-        <div class="memorial-note">公历和农历纪念日都只保存在当前用户的卡片数据中，不会写入后端。</div>
+        <div class="memorial-note">这里添加的纪念日会写入中国节假日集成，传感器和卡片使用同一份配置。</div>
         ${this._memorialMessage ? html`<div class="memorial-message">${this._memorialMessage}</div>` : ""}
         ${this._memorialOpen ? html`
           <div class="memorial-form">
             <input class="memorial-input" placeholder="名称，例如妈妈生日" .value=${this._draftName || ""} @input=${(e) => { this._draftName = e.target.value; }} />
+            <div class="memorial-pair">
             <select class="memorial-select" .value=${this._draftCalendar || "solar"} @change=${(e) => { this._draftCalendar = e.target.value; this._draftDate = ""; if (this._draftCalendar === "lunar") this._draftMode = "yearly_count"; this._allowFormRender = true; this.requestUpdate(); }}>
               <option value="solar">公历日期</option>
               <option value="lunar">农历日期</option>
             </select>
-            ${this._draftCalendar === "lunar" ? html`
-              <div class="lunar-date-inputs">
-                <select class="memorial-select" .value=${this._draftLunarMonth || "1"} @change=${(e) => { this._draftLunarMonth = e.target.value; }}>
-                  ${LUNAR_MONTH_NAMES.map((month, index) => html`<option value=${index + 1}>${month}</option>`)}
-                </select>
-                <select class="memorial-select" .value=${this._draftLunarDay || "1"} @change=${(e) => { this._draftLunarDay = e.target.value; }}>
-                  ${LUNAR_DAY_NAMES.map((day, index) => html`<option value=${index + 1}>${day}</option>`)}
-                </select>
-                <label class="lunar-leap-check"><input type="checkbox" .checked=${Boolean(this._draftLunarLeap)} @change=${(e) => { this._draftLunarLeap = e.target.checked; }} /><span>闰月</span></label>
-              </div>
-            ` : html`
-              <input class="memorial-input" type="date" .value=${this._draftDate || ""} @input=${(e) => { this._draftDate = e.target.value; }} />
-            `}
             <select class="memorial-select" .value=${this._draftMode || "yearly_count"} @change=${(e) => { this._draftMode = e.target.value; this._allowFormRender = true; this.requestUpdate(); }}>
               <option value="yearly_count">每年，计算周岁/周年</option>
               <option value="yearly">每年重复，不计算周年</option>
               ${this._draftCalendar === "lunar" ? "" : html`<option value="timer">精确计时</option>`}
             </select>
+            </div>
+            ${this._draftCalendar === "lunar" ? html`
+              <div class="lunar-date-inputs">
+                <select class="memorial-select" @change=${(e) => { this._draftLunarMonth = e.target.value; }}>
+                  ${LUNAR_MONTH_NAMES.map((month, index) => html`<option value=${index + 1} ?selected=${String(index + 1) === String(this._draftLunarMonth || "1")}>${month}</option>`)}
+                </select>
+                <select class="memorial-select" @change=${(e) => { this._draftLunarDay = e.target.value; }}>
+                  ${LUNAR_DAY_NAMES.map((day, index) => html`<option value=${index + 1} ?selected=${String(index + 1) === String(this._draftLunarDay || "1")}>${day}</option>`)}
+                </select>
+                <label class="lunar-leap-check"><input type="checkbox" .checked=${Boolean(this._draftLunarLeap)} @change=${(e) => { this._draftLunarLeap = e.target.checked; }} /><span>闰月</span></label>
+              </div>
+              ${this._draftMode !== "yearly" ? html`<input class="memorial-input" type="number" min="1900" max="2100" placeholder="出生农历年份，可选，用于计算周岁" .value=${this._draftYear || ""} @input=${(e) => { this._draftYear = e.target.value; }} />` : ""}
+            ` : html`
+              <input class="memorial-input" type="date" .value=${this._draftDate || ""} @input=${(e) => { this._draftDate = e.target.value; }} />
+            `}
             ${this._draftMode === "timer" ? html`
               <input class="memorial-input" type="time" .value=${this._draftTime || "09:00"} @input=${(e) => { this._draftTime = e.target.value; }} />
             ` : ""}
@@ -2461,18 +2529,16 @@ class ChineseCalendarCard extends LitElement {
                 <div>
                   <div class="memorial-name">
                     ${this._renderDecoratedName(item.label)}
-                    <span class="memorial-badge">${item.source === "config" ? "配置" : "前端"}</span>
+                    <span class="memorial-badge">${this._sourceLabel(item.source)}</span>
                   </div>
                   <div class="memorial-sub">${item.sub}</div>
                 </div>
                 <div class="memorial-days">${item.kind === "timer" ? this._renderItemDays({ days: item.daysText, date: item.date, timerType: item.timerType }) : item.daysText}</div>
-                ${item.source === "card" ? html`
-                  <button class="memorial-delete" type="button" title="删除这个前端纪念日" @click=${() => this._deleteMemorial(item)}>×</button>
-                ` : html`<span></span>`}
+                ${item.source === "config" ? html`<span></span>` : html`<button class="memorial-delete" type="button" title="删除这个纪念日" @click=${() => this._deleteMemorial(item)}>×</button>`}
               </div>
             `)}
           </div>
-        ` : html`<div class="memorial-note">还没有卡片纪念日。可以添加公历或农历日期。</div>`}
+        ` : html`<div class="memorial-note">还没有纪念日。选择公历或农历后保存，就会写入集成。</div>`}
       </div>
     `;
   }
