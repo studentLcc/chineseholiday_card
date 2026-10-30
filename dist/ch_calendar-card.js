@@ -1,7 +1,7 @@
 /**
  * ch_calendar-card - 中国节假日日历卡片
  * 基于 Lit，适配 Home Assistant 2023.5+
- * 0.5.0：支持前端公历/农历纪念日和稳定时钟更新。
+ * 0.5.1：支持前端公历/农历纪念日，并修正 HACS 加载文件名。
  */
 
 function initializeChineseHolidayCard(attempt = 0) {

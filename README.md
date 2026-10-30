@@ -17,7 +17,7 @@ https://github.com/studentLcc/chineseholiday_card
 ```yaml
 resources:
   - type: module
-    url: /hacsfiles/chineseholiday_card/dist/ch_calendar-card.js
+    url: /hacsfiles/chineseholiday_card/ch_calendar-card.js
 ```
 
 添加卡片并绑定后端实体：
@@ -104,8 +104,9 @@ anniversaries:
 
 ## 版本
 
-当前版本：`0.5.0`
+当前版本：`0.5.1`
 
+- `0.5.1`：修正 HACS 文件名，重新下载后会覆盖原来的 `ch_calendar-card.js`
 - `0.5.0`：支持卡片内添加公历/农历纪念日，并避免时钟刷新打断输入
 - `0.4.1`：手动拉取节假日时绑定当前卡片实体
 - `0.4.0`：增加手动拉取节假日按钮，以及不写入后端的前端纪念日
