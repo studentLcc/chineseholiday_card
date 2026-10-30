@@ -1,7 +1,9 @@
 {
-    "name": "中国节假日日历 Card（studentLcc）",
-    "version": "0.4.1",
-    "render_readme": true,
-    "filename":"ch_calendar-card.js",
-    "country": ["CN"]
-  }
+  "name": "中国节假日日历 Card（studentLcc）",
+  "version": "0.5.0",
+  "render_readme": true,
+  "filename": "dist/ch_calendar-card.js",
+  "country": [
+    "CN"
+  ]
+}
